@@ -1,3 +1,56 @@
+# Task Manager API
+
+A Spring Boot REST API built to learn authentication and authorization from the ground up — Spring Security + JWT, with a simple `USER`/`ADMIN` role split and per-user data ownership (you can only see and modify your own tasks).
+
+This project deliberately fills a specific gap: a prior project (Library Management System) covered relational data modeling (one-to-many, many-to-many) but had **no auth at all** — anyone could hit any endpoint. This project exists to close that gap.
+
+## What This Demonstrates
+
+- **Stateless JWT authentication** — no server-side sessions; every request proves who it is independently via a signed token
+- **Password hashing with BCrypt** — passwords are never stored or compared in plain text
+- **A custom `UserDetailsService`** — bridges Spring Security's generic auth machinery to a real Postgres `users` table
+- **A custom `OncePerRequestFilter`** — validates the JWT on every incoming request, before it ever reaches a controller
+- **Method-level authorization** with `@PreAuthorize("hasRole('ADMIN')")` — some endpoints are gated by role
+- **Resource ownership enforcement** — a *data-dependent* authorization rule (do you own this specific row?) that lives in the service layer, since it can't be expressed as a simple annotation
+- **Correct 401 vs 403 semantics** — `401` means "I don't know who you are" (no/invalid/expired token), `403` means "I know exactly who you are, and the answer is no" (wrong owner, wrong role) — a distinction many real APIs actually get backwards
+
+## Tech Stack
+
+- Java 17
+- Spring Boot 3.3 (Web, Data JPA, Security, Validation)
+- PostgreSQL
+- JJWT 0.12.6 (JWT creation/verification)
+- Lombok
+
+## Prerequisites
+
+- JDK 17+
+- Maven 3.8+
+- PostgreSQL running locally
+
+## Setup
+
+1. Create the database (in `psql`):
+```sql
+   CREATE DATABASE task_manager_db;
+```
+2. Check `src/main/resources/application.properties` — update the datasource username/password if yours differ from `postgres`/`library123`.
+3. Run it:
+```bash
+   mvn spring-boot:run
+```
+   Tables (`users`, `tasks`) are auto-created on first run via `spring.jpa.hibernate.ddl-auto=update`.
+
+The API runs on **`http://localhost:8081`** — intentionally not `8080`, so it can run alongside other local Spring Boot projects (like the Library Management System) without a port collision.
+
+## How the Auth Flow Actually Works
+
+1. **`POST /api/auth/register`** — creates a user (always with role `USER` — there's no way to self-assign `ADMIN` through the API), hashes the password with BCrypt, and returns a JWT immediately (no separate login step needed right after signup).
+2. **`POST /api/auth/login`** — Spring Security's `AuthenticationManager` verifies the submitted password against the stored hash, and a JWT is issued on success.
+3. **Every protected request** must include:
+
+## Authorization: Bearer <token>
+
 A custom filter (`JwtAuthenticationFilter`) intercepts every request, validates the token's signature and expiry, and — if valid — tells Spring Security who's making the request for the rest of that request's lifecycle.
 4. **Tokens expire after 1 hour** (`app.jwt.expiration-ms` in `application.properties`). After that, the user has to log in again for a fresh one — there's no refresh-token mechanism in this version (a natural next step if you wanted to extend this project).
 
